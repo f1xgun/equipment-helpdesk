@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -112,3 +114,91 @@ def test_list_tickets_with_filters():
 
         response = client.get("/tickets", params={"status": "unknown"})
         assert response.status_code == 422
+
+
+def test_ticket_can_be_taken_into_work_and_closed():
+    with TestClient(app) as client:
+        created = client.post(
+            "/tickets",
+            json={
+                "device_code": "PC-014",
+                "room": "305Б",
+                "description": "Монитор не включается",
+            },
+        )
+        assert created.status_code == 201
+        ticket = created.json()
+        status_url = f"/tickets/{ticket['id']}/status"
+
+        response = client.patch(status_url, json={"status": "in_progress"})
+        assert response.status_code == 200
+        assert response.json()["status"] == "in_progress"
+        assert response.json()["resolution"] is None
+        assert response.json()["closed_at"] is None
+
+        response = client.patch(
+            status_url,
+            json={"status": "closed", "resolution": "  Заменён кабель питания  "},
+        )
+        assert response.status_code == 200
+        closed = response.json()
+        assert closed["status"] == "closed"
+        assert closed["resolution"] == "Заменён кабель питания"
+        assert closed["created_at"] == ticket["created_at"]
+        assert datetime.fromisoformat(closed["closed_at"]) >= datetime.fromisoformat(
+            ticket["created_at"]
+        )
+        assert client.get(f"/tickets/{ticket['id']}").json() == closed
+
+        response = client.patch(status_url, json={"status": "in_progress"})
+        assert response.status_code == 409
+        assert client.get(f"/tickets/{ticket['id']}").json() == closed
+
+
+def test_invalid_status_changes_do_not_modify_ticket():
+    with TestClient(app) as client:
+        response = client.post(
+            "/tickets",
+            json={
+                "device_code": "PC-014",
+                "room": "305Б",
+                "description": "Монитор не включается",
+            },
+        )
+        assert response.status_code == 201
+        ticket = response.json()
+        ticket_url = f"/tickets/{ticket['id']}"
+        status_url = f"{ticket_url}/status"
+
+        response = client.patch(
+            status_url, json={"status": "closed", "resolution": "Заменён кабель"}
+        )
+        assert response.status_code == 409
+        assert client.get(ticket_url).json() == ticket
+
+        response = client.patch(
+            status_url,
+            json={"status": "in_progress", "resolution": "Ремонт ещё не завершён"},
+        )
+        assert response.status_code == 422
+        assert client.get(ticket_url).json() == ticket
+
+        response = client.patch(status_url, json={"status": "in_progress"})
+        assert response.status_code == 200
+        in_progress = response.json()
+
+        response = client.patch(status_url, json={"status": "closed"})
+        assert response.status_code == 422
+        assert response.json()["detail"] == "Resolution is required to close a ticket"
+
+        response = client.patch(
+            status_url, json={"status": "closed", "resolution": "   "}
+        )
+        assert response.status_code == 422
+        assert client.get(ticket_url).json() == in_progress
+
+        response = client.patch(
+            "/tickets/999/status", json={"status": "in_progress"}
+        )
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Ticket not found"}

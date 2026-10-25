@@ -5,8 +5,13 @@ from fastapi.routing import APIRouter
 
 from app.dependencies import get_ticket_service
 from app.models.ticket import Ticket, TicketStatus
-from app.schemas.ticket import TicketCreate, TicketResponse
-from app.services.ticket import TicketNotFoundError, TicketService
+from app.schemas.ticket import TicketCreate, TicketResponse, TicketStatusUpdate
+from app.services.ticket import (
+    InvalidResolutionError,
+    InvalidStatusTransitionError,
+    TicketNotFoundError,
+    TicketService,
+)
 
 router = APIRouter(prefix = "/tickets", tags=["tickets"])
 
@@ -38,3 +43,19 @@ def get_with_filters(
     room: str | None = None,
 ):
     return service.get_with_filters(status=status, room=room)
+
+
+@router.patch("/{ticket_id}/status", response_model=TicketResponse)
+def change_status(
+    ticket_id: int,
+    payload: TicketStatusUpdate,
+    service: Annotated[TicketService, Depends(get_ticket_service)],
+):
+    try:
+        return service.change_status(ticket_id, **payload.model_dump())
+    except TicketNotFoundError:
+        raise HTTPException(status_code=404, detail="Ticket not found") from None
+    except InvalidStatusTransitionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    except InvalidResolutionError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from None
