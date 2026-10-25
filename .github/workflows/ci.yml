@@ -28,4 +28,5 @@ jobs:
           path: |
             app_final.py
             requirements.txt
+            app/**/*.py
           if-no-files-found: error

@@ -1,8 +1,8 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy import DateTime, String, Text
+from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
