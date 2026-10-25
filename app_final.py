@@ -7,6 +7,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.tickets import router as tickets_router
 from app.config import get_database_url
 from app.db.session import create_session_factory
 from app.dependencies import get_session
@@ -30,7 +31,10 @@ async def lifespan(app: FastAPI):
 
 
 VERSION = "0.1.0"
+
 app = FastAPI(title="Equipment Helpdesk", version=VERSION, lifespan=lifespan)
+
+app.include_router(tickets_router)
 
 
 @app.get("/health")

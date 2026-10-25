@@ -3,24 +3,26 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.models.ticket import Ticket, TicketPriority, TicketStatus
+from app.repositories.ticket import TicketRepository
 
 
-def test_ticket_survives_new_session(tmp_path):
+def test_repository_saves_and_finds_ticket(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     try:
         Base.metadata.create_all(engine)
 
         with Session(engine) as session:
-            ticket = Ticket(
-                device_code="DC123", room="N123", description="printer is broken"
+            repository = TicketRepository(session)
+            ticket = repository.add(
+                Ticket(device_code="DC123", room="N123", description="printer is broken")
             )
-            session.add(ticket)
-            session.flush()
             ticket_id = ticket.id
+            assert ticket_id is not None
             session.commit()
 
         with Session(engine) as session:
-            saved = session.get(Ticket, ticket_id)
+            repository = TicketRepository(session)
+            saved = repository.get_by_id(ticket_id)
 
             assert saved is not None
             assert saved.device_code == "DC123"
@@ -31,5 +33,6 @@ def test_ticket_survives_new_session(tmp_path):
             assert saved.resolution is None
             assert saved.closed_at is None
             assert saved.created_at is not None
+            assert repository.get_by_id(ticket_id + 1) is None
     finally:
         engine.dispose()
