@@ -1,9 +1,12 @@
+import logging
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.ticket import Ticket, TicketStatus
 from app.repositories.ticket import TicketRepository
+
+logger = logging.getLogger(__name__)
 
 
 class TicketNotFoundError(Exception):
@@ -27,6 +30,9 @@ class TicketService:
         with self.session.begin():
             created = self.repository.add(ticket)
 
+        logger.info(
+            "Ticket created: id=%s priority=%s", created.id, created.priority.value
+        )
         return created
 
     def get_by_id(self, ticket_id: int) -> Ticket:
@@ -52,6 +58,7 @@ class TicketService:
     ) -> Ticket:
         with self.session.begin():
             ticket = self.get_by_id(ticket_id)
+            previous_status = ticket.status
             allowed_transitions = {
                 TicketStatus.OPEN: TicketStatus.IN_PROGRESS,
                 TicketStatus.IN_PROGRESS: TicketStatus.CLOSED,
@@ -73,4 +80,10 @@ class TicketService:
 
             ticket.status = status
 
+        logger.info(
+            "Ticket status changed: id=%s %s -> %s",
+            ticket.id,
+            previous_status.value,
+            ticket.status.value,
+        )
         return ticket

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 
 import pytest
@@ -116,7 +117,8 @@ def test_list_tickets_with_filters():
         assert response.status_code == 422
 
 
-def test_ticket_can_be_taken_into_work_and_closed():
+def test_ticket_can_be_taken_into_work_and_closed(caplog):
+    caplog.set_level(logging.INFO, logger="app.services.ticket")
     with TestClient(app) as client:
         created = client.post(
             "/tickets",
@@ -153,6 +155,12 @@ def test_ticket_can_be_taken_into_work_and_closed():
         response = client.patch(status_url, json={"status": "in_progress"})
         assert response.status_code == 409
         assert client.get(f"/tickets/{ticket['id']}").json() == closed
+
+    assert f"Ticket created: id={ticket['id']} priority=normal" in caplog.text
+    assert f"Ticket status changed: id={ticket['id']} open -> in_progress" in caplog.text
+    assert f"Ticket status changed: id={ticket['id']} in_progress -> closed" in caplog.text
+    assert "Монитор не включается" not in caplog.text
+    assert "Заменён кабель питания" not in caplog.text
 
 
 def test_invalid_status_changes_do_not_modify_ticket():
