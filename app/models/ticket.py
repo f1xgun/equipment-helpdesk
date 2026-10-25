@@ -44,7 +44,6 @@ class Ticket(Base):
         default=TicketStatus.OPEN,
     )
     resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Dates are stored as UTC without timezone information.
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(UTC).replace(tzinfo=None),
