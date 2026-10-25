@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketStatus
 from app_final import app
 
 pytestmark = pytest.mark.usefixtures("isolated_database")
@@ -30,6 +30,10 @@ def test_create_ticket_saves_it_to_database():
         assert data["closed_at"] is None
         assert data["created_at"]
 
+        fetched = client.get(f"/tickets/{data['id']}")
+        assert fetched.status_code == 200
+        assert fetched.json() == data
+
         with app.state.session_factory() as session:
             saved = session.get(Ticket, data["id"])
             assert saved is not None
@@ -55,3 +59,56 @@ def test_create_ticket_rejects_blank_description():
         )
         with app.state.session_factory() as session:
             assert session.scalar(select(Ticket)) is None
+
+
+def test_get_missing_ticket_returns_404():
+    with TestClient(app) as client:
+        response = client.get("/tickets/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Ticket not found"}
+
+
+def test_list_tickets_with_filters():
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            tickets = [
+                Ticket(device_code="PC-001", room="305Б", description="Нет изображения"),
+                Ticket(device_code="PC-002", room="306", description="Не работает мышь"),
+                Ticket(
+                    device_code="PC-003",
+                    room="305Б",
+                    description="Нет сети",
+                    status=TicketStatus.IN_PROGRESS,
+                ),
+            ]
+            session.add_all(tickets)
+            session.commit()
+            first_id, second_id, third_id = [ticket.id for ticket in tickets]
+
+        response = client.get("/tickets")
+        assert response.status_code == 200
+        assert [ticket["id"] for ticket in response.json()] == [
+            first_id,
+            second_id,
+            third_id,
+        ]
+
+        response = client.get("/tickets", params={"room": "305Б"})
+        assert response.status_code == 200
+        assert [ticket["id"] for ticket in response.json()] == [first_id, third_id]
+
+        response = client.get("/tickets", params={"status": "open"})
+        assert response.status_code == 200
+        assert [ticket["id"] for ticket in response.json()] == [first_id, second_id]
+
+        response = client.get("/tickets", params={"status": "open", "room": "305Б"})
+        assert response.status_code == 200
+        assert [ticket["id"] for ticket in response.json()] == [first_id]
+
+        response = client.get("/tickets", params={"room": "999"})
+        assert response.status_code == 200
+        assert response.json() == []
+
+        response = client.get("/tickets", params={"status": "unknown"})
+        assert response.status_code == 422
